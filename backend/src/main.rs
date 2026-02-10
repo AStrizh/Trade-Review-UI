@@ -2,8 +2,8 @@ mod models;
 mod routes;
 
 use std::net::SocketAddr;
+use http::{header, HeaderValue, Method};
 
-use http::{header, Method};
 use tower_http::{
     cors::{Any, CorsLayer},
     trace::TraceLayer,
@@ -18,12 +18,13 @@ async fn main() {
         )
         .init();
 
-    let cors = CorsLayer::new()
-        .allow_origin("http://localhost:5173".parse().expect("valid Vite origin"))
-        .allow_methods([Method::GET])
-        .allow_headers([header::CONTENT_TYPE])
-        .allow_credentials(false)
-        .expose_headers(Any);
+	let cors = CorsLayer::new()
+		.allow_origin(HeaderValue::from_static("http://localhost:5173"))
+		.allow_methods([Method::GET])
+		.allow_headers([header::CONTENT_TYPE])
+		.allow_credentials(false)
+		.expose_headers(Any);
+
 
     let app = routes::app_router().layer(TraceLayer::new_for_http()).layer(cors);
 
