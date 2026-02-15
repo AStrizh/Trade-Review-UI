@@ -1,6 +1,6 @@
 # Trade Review UI
 
-> **Status:** Early development (Milestone 0 complete)
+> **Status:** Early development (Milestone 1 in progress)
 
 ## Overview
 
@@ -67,9 +67,9 @@ Milestone 0 establishes the **project foundation**:
 
 At this stage:
 
-* No market data is loaded yet
-* No charts are rendered yet
-* No Parquet or CSV ingestion exists yet
+* A Milestone 1 candlestick prototype is available using backend-served demo bars
+* Parquet-backed ingestion is still pending
+* Trade and indicator overlays are not implemented yet
 
 This milestone exists solely to ensure that:
 
