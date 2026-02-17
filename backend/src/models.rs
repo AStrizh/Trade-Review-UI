@@ -29,6 +29,37 @@ pub struct BarsResponse {
     pub candles: Vec<Candle>,
 }
 
+/// Represents one timestamped numeric point for a technical indicator series.
+#[derive(Clone, Debug, Serialize)]
+pub struct IndicatorPoint {
+    /// Point timestamp represented as UTC epoch seconds.
+    pub time: i64,
+    /// Indicator value at the given timestamp.
+    pub value: f64,
+}
+
+/// Represents a single indicator line for frontend rendering.
+#[derive(Clone, Debug, Serialize)]
+pub struct IndicatorSeries {
+    /// Stable identifier for the indicator column.
+    pub id: String,
+    /// Human-readable label shown in the UI.
+    pub name: String,
+    /// Visualization hint, currently always line for milestone 2.
+    pub kind: String,
+    /// Indicates overlay chart (`price`) or pane chart (for example `rsi`).
+    pub pane: String,
+    /// Sorted list of non-null indicator points.
+    pub data: Vec<IndicatorPoint>,
+}
+
+/// Wraps indicator output returned by the series endpoint.
+#[derive(Debug, Serialize)]
+pub struct SeriesResponse {
+    /// The set of indicator series available for the requested dataset.
+    pub series: Vec<IndicatorSeries>,
+}
+
 /// Represents query parameters accepted by the bars endpoint.
 #[derive(Debug, Deserialize)]
 pub struct BarsQuery {

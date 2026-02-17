@@ -1,6 +1,6 @@
 # Trade Review UI
 
-> **Status:** Early development (Milestone 1 complete)
+> **Status:** Early development (Milestone 2 complete)
 
 ## Overview
 
@@ -52,7 +52,7 @@ The goal is **high code quality, correctness, and clarity**, not rapid, opaque g
 
 ---
 
-## Current Status (Milestone 1 Complete)
+## Current Status (Milestone 2 Complete)
 
 Milestone 1 establishes the **project foundation** and the first charting milestone:
 
@@ -69,9 +69,9 @@ Milestone 1 establishes the **project foundation** and the first charting milest
 
 At this stage:
 
-* Milestone 1 is complete with an end-to-end backend-to-frontend candlestick flow
-* Parquet-backed ingestion is still pending (Milestone 2)
-* Trade and indicator overlays are not implemented yet (Milestones 3+)
+* Milestone 2 is complete with parquet-backed bar and indicator loading
+* Candlestick and indicator overlays render from backend-served parquet data
+* Trade overlays are not implemented yet (Milestone 3)
 
 This completed milestone set ensures that:
 
@@ -207,10 +207,10 @@ Planned milestones (subject to iteration):
 * ✅ **Milestone 1 (Complete):**
   Render candlestick charts using backend-served demo bar data
 
-* **Milestone 2 (Next):**
+* ✅ **Milestone 2 (Complete):**
   Ingest OHLCV and indicator data from Parquet files
 
-* **Milestone 3:**
+* **Milestone 3 (Next):**
   Load backtest trades from CSV and render entry/exit markers
 
 * **Milestone 4:**

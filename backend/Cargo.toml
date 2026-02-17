@@ -13,3 +13,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 http = "1"
 
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+polars = { version = "0.46", features = ["lazy", "parquet", "dtype-datetime"] }
