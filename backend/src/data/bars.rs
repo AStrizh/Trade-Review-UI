@@ -1,38 +1,267 @@
+use std::path::PathBuf;
+
 use chrono::{NaiveDate, TimeZone, Utc};
+use polars::lazy::dsl::{col, lit};
+use polars::prelude::*;
 
-use crate::models::Candle;
+use crate::models::{Candle, IndicatorPoint, IndicatorSeries};
 
-/// Stores available candle datasets keyed by contract name.
-#[derive(Clone, Copy)]
-pub struct BarsRepository;
+const DEFAULT_PARQUET_PATH: &str = "../sample.parquet";
+const INDICATOR_COLUMNS: [&str; 9] = [
+    "vwap",
+    "vwapn",
+    "vwapd",
+    "ema_9",
+    "ema_14",
+    "ema_21",
+    "rsi_14_ema",
+    "rsi_14_wilder",
+    "atr_14",
+];
+
+/// Reads market bars and indicator values from a configured Parquet source.
+#[derive(Clone)]
+pub struct BarsRepository {
+    parquet_path: PathBuf,
+}
 
 impl BarsRepository {
-    /// Creates a new bars repository instance used by request handlers.
+    /// Creates a repository using an environment-configurable parquet file path.
     pub fn new() -> Self {
-        Self
+        let parquet_path = std::env::var("BARS_PARQUET_PATH")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(DEFAULT_PARQUET_PATH));
+
+        Self { parquet_path }
     }
 
-    /// Returns candles for a contract filtered to an optional inclusive date window.
+    /// Returns candles for an optional contract and optional inclusive date window.
     pub fn load_bars(
         &self,
         contract: Option<&str>,
         start: Option<&str>,
         end: Option<&str>,
     ) -> Result<Vec<Candle>, String> {
-        let all_candles = match contract.unwrap_or("DEMO_CONTRACT") {
-            "DEMO_CONTRACT" | "CLZ4_ohlcv1m" => seed_demo_candles(),
-            other => return Err(format!("Unknown contract '{other}'")),
-        };
-
         let start_time = parse_start_date(start)?;
         let end_time = parse_end_date(end)?;
 
-        Ok(all_candles
-            .into_iter()
-            .filter(|candle| start_time.is_none_or(|min| candle.time >= min))
-            .filter(|candle| end_time.is_none_or(|max| candle.time <= max))
-            .collect())
+        let mut query = self.base_query()?;
+
+        if let Some(contract) = contract {
+            query = query.filter(col("contract").eq(lit(contract)));
+        }
+
+        if let Some(start_time) = start_time {
+            query = query.filter(
+                col("timestamp")
+                    .cast(DataType::Int64)
+                    .gt_eq(lit(start_time * 1000)),
+            );
+        }
+
+        if let Some(end_time) = end_time {
+            query = query.filter(
+                col("timestamp")
+                    .cast(DataType::Int64)
+                    .lt_eq(lit(end_time * 1000)),
+            );
+        }
+
+        let df = query
+            .select([
+                col("timestamp"),
+                col("open"),
+                col("high"),
+                col("low"),
+                col("close"),
+            ])
+            .sort(["timestamp"], Default::default())
+            .collect()
+            .map_err(|error| format!("Failed to load bars from parquet: {error}"))?;
+
+        map_dataframe_to_candles(df)
     }
+
+    /// Returns chart-ready indicator series for available indicator columns.
+    pub fn load_series(
+        &self,
+        contract: Option<&str>,
+        start: Option<&str>,
+        end: Option<&str>,
+    ) -> Result<Vec<IndicatorSeries>, String> {
+        let start_time = parse_start_date(start)?;
+        let end_time = parse_end_date(end)?;
+
+        let mut query = self.base_query()?;
+
+        if let Some(contract) = contract {
+            query = query.filter(col("contract").eq(lit(contract)));
+        }
+
+        if let Some(start_time) = start_time {
+            query = query.filter(
+                col("timestamp")
+                    .cast(DataType::Int64)
+                    .gt_eq(lit(start_time * 1000)),
+            );
+        }
+
+        if let Some(end_time) = end_time {
+            query = query.filter(
+                col("timestamp")
+                    .cast(DataType::Int64)
+                    .lt_eq(lit(end_time * 1000)),
+            );
+        }
+
+        let select_exprs = std::iter::once(col("timestamp"))
+            .chain(INDICATOR_COLUMNS.into_iter().map(col))
+            .collect::<Vec<_>>();
+
+        let df = query
+            .select(select_exprs)
+            .sort(["timestamp"], Default::default())
+            .collect()
+            .map_err(|error| format!("Failed to load series from parquet: {error}"))?;
+
+        map_dataframe_to_series(df)
+    }
+
+    fn base_query(&self) -> Result<LazyFrame, String> {
+        if !self.parquet_path.exists() {
+            return Err(format!(
+                "Parquet file not found at '{}'. Set BARS_PARQUET_PATH to override.",
+                self.parquet_path.display()
+            ));
+        }
+
+        LazyFrame::scan_parquet(self.parquet_path.clone(), ScanArgsParquet::default()).map_err(
+            |error| {
+                format!(
+                    "Unable to open parquet file '{}': {error}",
+                    self.parquet_path.display()
+                )
+            },
+        )
+    }
+}
+
+fn map_dataframe_to_candles(df: DataFrame) -> Result<Vec<Candle>, String> {
+    let timestamps = df
+        .column("timestamp")
+        .map_err(|error| format!("Missing timestamp column: {error}"))?
+        .cast(&DataType::Int64)
+        .map_err(|error| format!("Timestamp conversion failed: {error}"))?;
+    let opens = df
+        .column("open")
+        .map_err(|error| format!("Missing open column: {error}"))?
+        .f64()
+        .map_err(|error| format!("Open conversion failed: {error}"))?;
+    let highs = df
+        .column("high")
+        .map_err(|error| format!("Missing high column: {error}"))?
+        .f64()
+        .map_err(|error| format!("High conversion failed: {error}"))?;
+    let lows = df
+        .column("low")
+        .map_err(|error| format!("Missing low column: {error}"))?
+        .f64()
+        .map_err(|error| format!("Low conversion failed: {error}"))?;
+    let closes = df
+        .column("close")
+        .map_err(|error| format!("Missing close column: {error}"))?
+        .f64()
+        .map_err(|error| format!("Close conversion failed: {error}"))?;
+    let timestamp_values = timestamps
+        .i64()
+        .map_err(|error| format!("Timestamp conversion failed: {error}"))?;
+
+    let mut candles = Vec::with_capacity(df.height());
+
+    for idx in 0..df.height() {
+        let Some(timestamp_ms) = timestamp_values.get(idx) else {
+            continue;
+        };
+
+        let (Some(open), Some(high), Some(low), Some(close)) = (
+            opens.get(idx),
+            highs.get(idx),
+            lows.get(idx),
+            closes.get(idx),
+        ) else {
+            continue;
+        };
+
+        candles.push(Candle {
+            time: timestamp_ms / 1000,
+            open,
+            high,
+            low,
+            close,
+        });
+    }
+
+    Ok(candles)
+}
+
+fn map_dataframe_to_series(df: DataFrame) -> Result<Vec<IndicatorSeries>, String> {
+    let timestamps = df
+        .column("timestamp")
+        .map_err(|error| format!("Missing timestamp column: {error}"))?
+        .cast(&DataType::Int64)
+        .map_err(|error| format!("Timestamp conversion failed: {error}"))?;
+    let timestamp_values = timestamps
+        .i64()
+        .map_err(|error| format!("Timestamp conversion failed: {error}"))?;
+
+    let mut series = Vec::with_capacity(INDICATOR_COLUMNS.len());
+
+    for indicator in INDICATOR_COLUMNS {
+        let values = match df.column(indicator) {
+            Ok(column) => column
+                .f64()
+                .map_err(|error| format!("{indicator} conversion failed: {error}"))?,
+            Err(_) => continue,
+        };
+
+        let mut points = Vec::new();
+
+        for idx in 0..df.height() {
+            let Some(timestamp_ms) = timestamp_values.get(idx) else {
+                continue;
+            };
+            let Some(value) = values.get(idx) else {
+                continue;
+            };
+
+            if value.is_nan() {
+                continue;
+            }
+
+            points.push(IndicatorPoint {
+                time: timestamp_ms / 1000,
+                value,
+            });
+        }
+
+        let pane = if indicator.starts_with("rsi") {
+            "rsi"
+        } else if indicator.starts_with("atr") {
+            "atr"
+        } else {
+            "price"
+        };
+
+        series.push(IndicatorSeries {
+            id: indicator.to_string(),
+            name: indicator.replace('_', " ").to_uppercase(),
+            kind: "line".to_string(),
+            pane: pane.to_string(),
+            data: points,
+        });
+    }
+
+    Ok(series)
 }
 
 /// Converts a date string into the first UTC second included in the requested range.
@@ -67,107 +296,25 @@ fn parse_yyyy_mm_dd(value: &str) -> Result<NaiveDate, String> {
         .map_err(|_| format!("Invalid date '{value}'. Expected YYYY-MM-DD."))
 }
 
-/// Produces deterministic sample candles used for Milestone 1 charting integration.
-fn seed_demo_candles() -> Vec<Candle> {
-    vec![
-        Candle {
-            time: 1729771800,
-            open: 71.22,
-            high: 71.32,
-            low: 71.21,
-            close: 71.25,
-        },
-        Candle {
-            time: 1729772100,
-            open: 71.25,
-            high: 71.28,
-            low: 71.12,
-            close: 71.22,
-        },
-        Candle {
-            time: 1729772400,
-            open: 71.22,
-            high: 71.40,
-            low: 71.20,
-            close: 71.36,
-        },
-        Candle {
-            time: 1729772700,
-            open: 71.36,
-            high: 71.49,
-            low: 71.35,
-            close: 71.47,
-        },
-        Candle {
-            time: 1729773000,
-            open: 71.47,
-            high: 71.55,
-            low: 71.32,
-            close: 71.38,
-        },
-        Candle {
-            time: 1729773300,
-            open: 71.38,
-            high: 71.44,
-            low: 71.22,
-            close: 71.27,
-        },
-        Candle {
-            time: 1729773600,
-            open: 71.27,
-            high: 71.29,
-            low: 71.08,
-            close: 71.15,
-        },
-        Candle {
-            time: 1729773900,
-            open: 71.15,
-            high: 71.31,
-            low: 71.14,
-            close: 71.28,
-        },
-        Candle {
-            time: 1729774200,
-            open: 71.28,
-            high: 71.34,
-            low: 71.16,
-            close: 71.21,
-        },
-        Candle {
-            time: 1729774500,
-            open: 71.21,
-            high: 71.23,
-            low: 71.00,
-            close: 71.05,
-        },
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use super::BarsRepository;
 
-    /// Verifies that date filtering keeps only candles inside the inclusive date window.
     #[test]
-    fn filters_bars_to_requested_range() {
+    fn reads_sample_parquet_bars() {
         let repository = BarsRepository::new();
         let bars = repository
-            .load_bars(
-                Some("DEMO_CONTRACT"),
-                Some("2024-10-24"),
-                Some("2024-10-24"),
-            )
-            .expect("date query should be valid");
+            .load_bars(None, None, None)
+            .expect("parquet should load");
 
-        assert_eq!(bars.len(), 10);
+        assert!(!bars.is_empty());
     }
 
-    /// Verifies that malformed dates are rejected with a useful error message.
     #[test]
     fn rejects_bad_dates() {
         let repository = BarsRepository::new();
         let err = repository
-            .load_bars(Some("DEMO_CONTRACT"), Some("10/24/2024"), None)
+            .load_bars(None, Some("10/24/2024"), None)
             .expect_err("invalid date must fail");
 
         assert!(err.contains("Expected YYYY-MM-DD"));

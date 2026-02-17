@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import ChartView from './components/ChartView';
-import { fetchBars, fetchHealth, type Candle } from './api/client';
+import { fetchBars, fetchHealth, fetchSeries, type Candle, type IndicatorSeries } from './api/client';
 
 type StatusState =
   | { type: 'loading' }
@@ -13,17 +13,19 @@ type BarsState =
   | { type: 'ready'; candles: Candle[] }
   | { type: 'error'; message: string };
 
-/** Defines the Milestone 1 default query so the app can load with no extra input controls yet. */
-const DEFAULT_BARS_QUERY = {
-  contract: 'DEMO_CONTRACT',
-  start: '2024-10-24',
-  end: '2024-10-24',
-};
+type SeriesState =
+  | { type: 'loading' }
+  | { type: 'ready'; series: IndicatorSeries[] }
+  | { type: 'error'; message: string };
 
-/** Coordinates backend health checks and initial bars loading for Milestone 1. */
+/** Milestone 2 default query reads from parquet and allows all contracts by default. */
+const DEFAULT_QUERY = {};
+
+/** Coordinates backend health checks and parquet-backed bars + indicator loading. */
 export default function App() {
   const [status, setStatus] = useState<StatusState>({ type: 'loading' });
   const [bars, setBars] = useState<BarsState>({ type: 'loading' });
+  const [series, setSeries] = useState<SeriesState>({ type: 'loading' });
 
   useEffect(() => {
     fetchHealth()
@@ -34,13 +36,19 @@ export default function App() {
         }
 
         setStatus({ type: 'ok' });
-        return fetchBars(DEFAULT_BARS_QUERY)
-          .then((response) => {
-            setBars({ type: 'ready', candles: response.candles });
-          })
+
+        fetchBars(DEFAULT_QUERY)
+          .then((response) => setBars({ type: 'ready', candles: response.candles }))
           .catch((error: unknown) => {
             const message = error instanceof Error ? error.message : 'Unknown bars error';
             setBars({ type: 'error', message });
+          });
+
+        fetchSeries(DEFAULT_QUERY)
+          .then((response) => setSeries({ type: 'ready', series: response.series }))
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Unknown series error';
+            setSeries({ type: 'error', message });
           });
       })
       .catch((error: unknown) => {
@@ -50,30 +58,23 @@ export default function App() {
   }, []);
 
   const statusText = useMemo(() => {
-    if (status.type === 'loading') {
-      return 'Checking backend health...';
-    }
+    if (status.type === 'loading') return 'Checking backend health...';
+    if (status.type === 'error') return `Backend error: ${status.message}`;
+    if (bars.type === 'loading') return 'Loading bars...';
+    if (bars.type === 'error') return `Bars error: ${bars.message}`;
+    if (series.type === 'loading') return 'Loading indicator series...';
+    if (series.type === 'error') return `Series error: ${series.message}`;
 
-    if (status.type === 'error') {
-      return `Backend error: ${status.message}`;
-    }
-
-    if (bars.type === 'loading') {
-      return 'Loading bars...';
-    }
-
-    if (bars.type === 'error') {
-      return `Bars error: ${bars.message}`;
-    }
-
-    return `Loaded ${bars.candles.length} candles for ${DEFAULT_BARS_QUERY.contract}`;
-  }, [bars, status]);
+    return `Loaded ${bars.candles.length} candles and ${series.series.length} indicator series from parquet`;
+  }, [bars, series, status]);
 
   return (
     <main style={{ margin: '0 auto', maxWidth: 1024, padding: '1rem' }}>
-      <h1>Trade Review UI — Milestone 1</h1>
+      <h1>Trade Review UI — Milestone 2</h1>
       <p>{statusText}</p>
-      {status.type === 'ok' && bars.type === 'ready' ? <ChartView candles={bars.candles} /> : null}
+      {status.type === 'ok' && bars.type === 'ready' && series.type === 'ready' ? (
+        <ChartView candles={bars.candles} series={series.series} />
+      ) : null}
     </main>
   );
 }

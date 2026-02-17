@@ -7,7 +7,7 @@ use axum::{
 
 use crate::{
     data::bars::BarsRepository,
-    models::{ApiErrorResponse, BarsQuery, BarsResponse, HealthResponse},
+    models::{ApiErrorResponse, BarsQuery, BarsResponse, HealthResponse, SeriesResponse},
 };
 
 /// Shared application state containing repositories used by route handlers.
@@ -33,6 +33,7 @@ pub fn app_router() -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/bars", get(bars))
+        .route("/series", get(series))
         .with_state(state)
 }
 
@@ -56,4 +57,21 @@ async fn bars(
         .map_err(|message| (StatusCode::BAD_REQUEST, Json(ApiErrorResponse { message })))?;
 
     Ok(Json(BarsResponse { candles }))
+}
+
+/// Returns indicator series filtered by contract and date query parameters.
+async fn series(
+    State(state): State<AppState>,
+    Query(query): Query<BarsQuery>,
+) -> Result<Json<SeriesResponse>, (StatusCode, Json<ApiErrorResponse>)> {
+    let series = state
+        .bars_repository
+        .load_series(
+            query.contract.as_deref(),
+            query.start.as_deref(),
+            query.end.as_deref(),
+        )
+        .map_err(|message| (StatusCode::BAD_REQUEST, Json(ApiErrorResponse { message })))?;
+
+    Ok(Json(SeriesResponse { series }))
 }

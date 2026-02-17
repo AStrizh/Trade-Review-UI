@@ -1,17 +1,26 @@
 import { useEffect, useRef } from 'react';
-import { CandlestickSeries, createChart, type IChartApi, type ISeriesApi, type UTCTimestamp } from 'lightweight-charts';
+import {
+  CandlestickSeries,
+  LineSeries,
+  createChart,
+  type IChartApi,
+  type ISeriesApi,
+  type UTCTimestamp,
+} from 'lightweight-charts';
 
-import type { Candle } from '../api/client';
+import type { Candle, IndicatorSeries } from '../api/client';
 
 type ChartViewProps = {
   candles: Candle[];
+  series: IndicatorSeries[];
 };
 
-/** Renders a responsive candlestick chart using TradingView Lightweight Charts. */
-export default function ChartView({ candles }: ChartViewProps) {
+/** Renders a responsive candlestick chart with overlay indicator lines. */
+export default function ChartView({ candles, series }: ChartViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const indicatorRefs = useRef<Map<string, ISeriesApi<'Line'>>>(new Map());
 
   useEffect(() => {
     const container = containerRef.current;
@@ -37,7 +46,7 @@ export default function ChartView({ candles }: ChartViewProps) {
       },
     });
 
-    const series = chart.addSeries(CandlestickSeries, {
+    const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: '#16a34a',
       downColor: '#dc2626',
       borderVisible: false,
@@ -46,21 +55,22 @@ export default function ChartView({ candles }: ChartViewProps) {
     });
 
     chartRef.current = chart;
-    seriesRef.current = series;
+    candleSeriesRef.current = candleSeries;
 
     return () => {
       chart.remove();
       chartRef.current = null;
-      seriesRef.current = null;
+      candleSeriesRef.current = null;
+      indicatorRefs.current.clear();
     };
   }, []);
 
   useEffect(() => {
-    if (!seriesRef.current) {
+    if (!candleSeriesRef.current) {
       return;
     }
 
-    seriesRef.current.setData(
+    candleSeriesRef.current.setData(
       candles.map((candle) => ({
         time: candle.time as UTCTimestamp,
         open: candle.open,
@@ -69,9 +79,46 @@ export default function ChartView({ candles }: ChartViewProps) {
         close: candle.close,
       })),
     );
-
-    chartRef.current?.timeScale().fitContent();
   }, [candles]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) {
+      return;
+    }
+
+    const overlaySeries = series.filter((item) => item.pane === 'price');
+    const seen = new Set<string>();
+
+    for (const indicator of overlaySeries) {
+      seen.add(indicator.id);
+      let lineSeries = indicatorRefs.current.get(indicator.id);
+      if (!lineSeries) {
+        lineSeries = chart.addSeries(LineSeries, {
+          lineWidth: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        });
+        indicatorRefs.current.set(indicator.id, lineSeries);
+      }
+
+      lineSeries.setData(
+        indicator.data.map((point) => ({
+          time: point.time as UTCTimestamp,
+          value: point.value,
+        })),
+      );
+    }
+
+    for (const [id, line] of indicatorRefs.current.entries()) {
+      if (!seen.has(id)) {
+        chart.removeSeries(line);
+        indicatorRefs.current.delete(id);
+      }
+    }
+
+    chart.timeScale().fitContent();
+  }, [series]);
 
   return <div ref={containerRef} style={{ height: 420, width: '100%' }} />;
 }
