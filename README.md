@@ -15,6 +15,8 @@ The project is designed to:
 
 This tool is intentionally **local-first**, **read-only**, and optimized for **debugging and inspection**, not live trading or signal generation.
 
+<img width="1313" height="663" alt="image" src="https://github.com/user-attachments/assets/4b1e1dfd-d867-4036-8e50-cbad34b3a10c" />
+
 ---
 
 ### 📊 Charting Library Attribution
