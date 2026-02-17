@@ -1,6 +1,6 @@
 # Trade Review UI
 
-> **Status:** Early development (Milestone 1 in progress)
+> **Status:** Early development (Milestone 1 complete)
 
 ## Overview
 
@@ -52,9 +52,9 @@ The goal is **high code quality, correctness, and clarity**, not rapid, opaque g
 
 ---
 
-## Current Status (Milestone 0)
+## Current Status (Milestone 1 Complete)
 
-Milestone 0 establishes the **project foundation**:
+Milestone 1 establishes the **project foundation** and the first charting milestone:
 
 * A monorepo structure containing:
 
@@ -62,16 +62,18 @@ Milestone 0 establishes the **project foundation**:
   * a React + TypeScript frontend
 * A running backend with a `/health` endpoint
 * A frontend that successfully communicates with the backend
+* A candlestick chart rendered with TradingView Lightweight Charts
+* Backend-served demo bars loaded through the `/bars` endpoint and displayed in the chart
 * Development-time CORS configuration
 * Core project documentation
 
 At this stage:
 
-* A Milestone 1 candlestick prototype is available using backend-served demo bars
-* Parquet-backed ingestion is still pending
-* Trade and indicator overlays are not implemented yet
+* Milestone 1 is complete with an end-to-end backend-to-frontend candlestick flow
+* Parquet-backed ingestion is still pending (Milestone 2)
+* Trade and indicator overlays are not implemented yet (Milestones 3+)
 
-This milestone exists solely to ensure that:
+This completed milestone set ensures that:
 
 * the repo structure is sound
 * tooling works end-to-end
@@ -202,10 +204,10 @@ These documents are considered **source of truth** and should be updated alongsi
 
 Planned milestones (subject to iteration):
 
-* **Milestone 1:**
-  Render candlestick charts using mock or real bar data
+* ✅ **Milestone 1 (Complete):**
+  Render candlestick charts using backend-served demo bar data
 
-* **Milestone 2:**
+* **Milestone 2 (Next):**
   Ingest OHLCV and indicator data from Parquet files
 
 * **Milestone 3:**
